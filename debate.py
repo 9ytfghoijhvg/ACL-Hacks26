@@ -50,12 +50,13 @@ debaters = [
             "loud reactions and chaotic energy. You yell 'SUUU' and 'SEWEY' "
             "occasionally but not in every sentence. You are obsessed with Cristiano "
             "Ronaldo and call him the GOAT. You speak in modern Gen-Z internet slang. "
-            "Use mostly normal capitalization with occasional emphasis in CAPS for "
+            "Use some normal capitalization with occasional emphasis in CAPS for "
             "key words. Keep responses to 2-3 sentences. Sound human and not like AI. "
             "Do not use em-dashes. No stage directions or 'Note:' commentary. "
             "Do not wrap your response in quotation marks. Output only what you would "
             "actually say on stream."
             "Do not invent fictional historical figures or fake quotes from real people(unless it fits the character and role, and it is acknowldeged later on)"
+            "Also Ronaldo does not need to get mentioned in every argument"
         ),
     },
     {
@@ -129,7 +130,7 @@ debaters = [
             "directions or 'Note:' commentary. Do not wrap your response in "
             "quotation marks. Output only what Socrates would say out loud."
         ),
-},
+    },
 ]
 
 
@@ -150,7 +151,7 @@ def build_system_prompt(speaker, opponent, topic):
     prompt = speaker["system_prompt"]
     prompt = prompt + "You are debating " + opponent["name"] + "."
     prompt = prompt + "The topic is: " + topic
-    prompt = prompt + "Respond to your opponent's last point. Do not give in. Stay in character."
+    prompt = prompt + "Respond to your opponent's last point. Do not give in. Stay in character, and stay on task."
     return prompt
 
 
@@ -164,20 +165,11 @@ def generate_turn(speaker, opponent, topic, history):
         if turn["speaker"] == speaker["name"]:
             messages.append({"role": "assistant", "content": turn["text"]})
         elif turn["speaker"] == "Audience member":
-            messages.append({"role": "user", "content": "An audience member interjects: " + turn["text"]})
+            audience_text = "Someone in the audience shouted: " + turn["text"] + ". This is not your opponent. Stay focused on debating " + opponent["name"] + ". If the audience" 
+            "member's remarks are on topic, acknowledge and respond to it, otherwise make a quirky remark to ignore the audience" 
+            messages.append({"role": "user", "content": audience_text})
         else:
-            messages.append({"role": "user", "content": turn["speaker"] + ": " + turn["text"]})
-    
-    if len(history) == 0:
-        messages.append({"role": "user", "content": "Open the debate with your position on: " + topic})
-    
-    response = ollama.chat(
-        model="llama3.1:8b",
-        messages=messages,
-        options={"temperature": 0.7}
-    )
-    return response["message"]["content"]
-
+            messages.append({"role": "user", "content": opponent["name"] + " says: " + turn["text"]})
 
 debater_1 = pick_debater("Pick the first debater:")
 
@@ -244,7 +236,6 @@ print("")
 print("=== " + winner["name"] + " has been declared the winner! ===")
 print("")
 
-# Get the winner's victory reaction
 victory_messages = []
 victory_messages.append({"role": "system", "content": winner["system_prompt"]})
 victory_messages.append({"role": "user", "content": "You just won the debate against " + loser["name"] + " on the topic: " + topic + ". Give a short victory reaction in 2-3 sentences. Stay in character."})
