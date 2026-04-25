@@ -1,5 +1,12 @@
+import json
+import urllib.parse
+from datetime import datetime
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
+from socketserver import ThreadingMixIn
+
 import ollama
-#The character descriptions were also partially generated with AI, as our original prompts had a couple of bugs that would cause personality issues
+# The character descriptions were also partially generated with AI, as our original prompts had a couple of bugs that would cause personality issues
 debaters = [
     {
         "name": "Frederick Douglass",
@@ -193,15 +200,6 @@ def pick_debater(prompt_text):
     return debaters[choice - 1]
 
 
-def build_system_prompt(speaker, opponent, topic):
-    prompt = speaker["system_prompt"]
-    prompt = prompt + "You are debating " + opponent["name"] + "."
-    prompt = prompt + "The topic is: " + topic
-    prompt = prompt + "Audience members may shout comments. When they do, you MUST address what they said before continuing your debate."
-    prompt = prompt + "Respond to your opponent's last point. Do not give in. Stay in character, and stay on task."
-    return prompt
-
-
 #This method was developed with the help of AI, as we needed a way for the debate turns to be stored and generated
 def generate_turn(speaker, opponent, topic, history):
     messages = []
@@ -223,19 +221,165 @@ def generate_turn(speaker, opponent, topic, history):
     response = ollama.chat(model="llama3.1:8b", messages=messages, options={"temperature": 0.8})
     return response["message"]["content"]
 
-debater_1 = pick_debater("Pick the first debater:")
 
-while True:
-    debater_2 = pick_debater("Pick the second debater:")
-    if debater_2["name"] != debater_1["name"]:
-        break
-    print("You can't pick the same debater twice. Try again.")
-topic = input("Enter a debate topic: ")
+ROOT_DIR = Path(__file__).resolve().parents[1]
+DEBATER_IMAGE_DIR = ROOT_DIR / "public" / "debaters"
 
 
-history = []
-turn_number = 1
-max_turns = 8
+def image_for_debater(name):
+    if not DEBATER_IMAGE_DIR.exists():
+        return None
+
+    for ext in [".png", ".jpg", ".jpeg", ".webp", ".svg"]:
+        candidate = DEBATER_IMAGE_DIR / f"{name}{ext}"
+        if candidate.exists():
+            return "/debaters/" + urllib.parse.quote(f"{name}{ext}")
+
+    return None
+
+
+def find_debater(name):
+    for debater in debaters:
+        if debater["name"] == name:
+            return debater
+    return None
+
+
+def build_system_prompt(speaker, opponent, topic):
+    prompt = speaker["system_prompt"]
+    prompt = prompt + "You are debating " + opponent["name"] + "."
+    prompt = prompt + "The topic is: " + topic
+    prompt = prompt + "Audience members may shout comments. When they do, you MUST address what they said before continuing your debate."
+    prompt = prompt + "Respond to your opponent's last point. Do not give in. Stay in character, and stay on task."
+    return prompt
+
+
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+    daemon_threads = True
+
+
+class DebateAPIHandler(BaseHTTPRequestHandler):
+    def send_cors_headers(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
+    def send_json(self, payload, status=200):
+        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        self.send_response(status)
+        self.send_cors_headers()
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_cors_headers()
+        self.end_headers()
+
+    def do_GET(self):
+        path = urllib.parse.urlparse(self.path).path
+        if path == "/debate/options":
+            self.handle_options()
+            return
+
+        self.send_json({"error": "Not found"}, status=404)
+
+    def do_POST(self):
+        path = urllib.parse.urlparse(self.path).path
+        if path == "/debate/start":
+            self.handle_start()
+        elif path == "/debate/next":
+            self.handle_next()
+        else:
+            self.send_json({"error": "Not found"}, status=404)
+
+    def handle_options(self):
+        choices = [
+            {"name": debater["name"], "image": image_for_debater(debater["name"]) }
+            for debater in debaters
+        ]
+        self.send_json({"debaters": choices})
+
+    def read_json(self):
+        content_length = int(self.headers.get("Content-Length", 0))
+        raw_body = self.rfile.read(content_length) if content_length else b""
+        if not raw_body:
+            return {}
+        return json.loads(raw_body.decode("utf-8"))
+
+    def handle_start(self):
+        payload = self.read_json()
+        topic = (payload.get("topic") or "").strip()
+        speaker_name = (payload.get("speaker") or "").strip()
+        opponent_name = (payload.get("opponent") or "").strip()
+
+        if not topic or not speaker_name or not opponent_name:
+            self.send_json({"error": "Topic, speaker, and opponent are required."}, status=400)
+            return
+
+        if speaker_name == opponent_name:
+            self.send_json({"error": "Speaker and opponent must be different."}, status=400)
+            return
+
+        speaker = find_debater(speaker_name)
+        opponent = find_debater(opponent_name)
+
+        if not speaker or not opponent:
+            self.send_json({"error": "Invalid debater selection."}, status=400)
+            return
+
+        try:
+            content = generate_turn(speaker, opponent, topic, [])
+            self.send_json({"message": {"speaker": speaker_name, "content": content, "time": datetime.utcnow().isoformat() + "Z"}})
+        except Exception as exc:
+            self.send_json({"error": str(exc)}, status=500)
+
+    def handle_next(self):
+        payload = self.read_json()
+        topic = (payload.get("topic") or "").strip()
+        speaker_name = (payload.get("speaker") or "").strip()
+        opponent_name = (payload.get("opponent") or "").strip()
+        history = payload.get("history") or []
+        audience = (payload.get("audience") or "").strip()
+
+        if not topic or not speaker_name or not opponent_name:
+            self.send_json({"error": "Topic, speaker, and opponent are required."}, status=400)
+            return
+
+        if speaker_name == opponent_name:
+            self.send_json({"error": "Speaker and opponent must be different."}, status=400)
+            return
+
+        speaker = find_debater(speaker_name)
+        opponent = find_debater(opponent_name)
+
+        if not speaker or not opponent:
+            self.send_json({"error": "Invalid debater selection."}, status=400)
+            return
+
+        if audience:
+            history = history + [{"speaker": "Audience member", "text": audience}]
+
+        try:
+            content = generate_turn(speaker, opponent, topic, history)
+            self.send_json({"message": {"speaker": speaker_name, "content": content, "time": datetime.utcnow().isoformat() + "Z"}})
+        except Exception as exc:
+            self.send_json({"error": str(exc)}, status=500)
+
+    def log_message(self, format, *args):
+        return
+
+
+def run_server(host="127.0.0.1", port=8000):
+    server = ThreadingHTTPServer((host, port), DebateAPIHandler)
+    print(f"Debate API listening at http://{host}:{port}")
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    run_server()
 
 while turn_number <= max_turns:
     
