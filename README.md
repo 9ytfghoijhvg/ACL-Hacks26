@@ -1,2 +1,2 @@
 # ACL-Hacks26
-for academies hackathon
+for academies hackathon, Aarav, Rishan, Anish
