@@ -187,19 +187,6 @@ debaters = [
     },
 ]
 
-def pick_debater(prompt_text):
-    print(prompt_text)
-    
-    number = 1
-    for debater in debaters:
-        print(str(number) + ". " + debater["name"])
-        number = number + 1
-        
-    
-    choice = int(input("Enter a number: "))
-    return debaters[choice - 1]
-
-
 #This method was developed with the help of AI, as we needed a way for the debate turns to be stored and generated
 def generate_turn(speaker, opponent, topic, history):
     messages = []
@@ -216,9 +203,9 @@ def generate_turn(speaker, opponent, topic, history):
             messages.append({"role": "user", "content": opponent["name"] + " says: " + turn["text"]})
     
     if len(history) == 0:
-        messages.append({"role": "user", "content": "Open the debate with your position on: " + topic})
+        messages.append({"role": "user", "content": "Open the debate with your position on the topic: \"" + topic + "\". Make your opening argument directly about this topic."})
     
-    response = ollama.chat(model="llama3.1:8b", messages=messages, options={"temperature": 0.8})
+    response = ollama.chat(model="llama3.2:3b", messages=messages, options={"temperature": 0.8, "num_predict": 120})
     return response["message"]["content"]
 
 
@@ -247,10 +234,10 @@ def find_debater(name):
 
 def build_system_prompt(speaker, opponent, topic):
     prompt = speaker["system_prompt"]
-    prompt = prompt + "You are debating " + opponent["name"] + "."
-    prompt = prompt + "The topic is: " + topic
-    prompt = prompt + "Audience members may shout comments. When they do, you MUST address what they said before continuing your debate."
-    prompt = prompt + "Respond to your opponent's last point. Do not give in. Stay in character, and stay on task."
+    prompt = prompt + " You are debating " + opponent["name"] + "."
+    prompt = prompt + " DEBATE TOPIC (stay on this the entire time): \"" + topic + "\". Every single response MUST directly address this topic. Do not go off on tangents unrelated to it."
+    prompt = prompt + " Audience members may shout comments — acknowledge them briefly, then bring it back to the topic."
+    prompt = prompt + " Respond to your opponent's last point. Do not give in. Stay in character."
     return prompt
 
 
@@ -284,7 +271,31 @@ class DebateAPIHandler(BaseHTTPRequestHandler):
             self.handle_options()
             return
 
+        # Serve debater images from public/debaters/
+        if path.startswith("/debaters/"):
+            self.serve_image(path)
+            return
+
         self.send_json({"error": "Not found"}, status=404)
+
+    def serve_image(self, url_path):
+        filename = urllib.parse.unquote(url_path[len("/debaters/"):])
+        file_path = DEBATER_IMAGE_DIR / filename
+        if not file_path.exists() or not file_path.is_file():
+            self.send_json({"error": "Image not found"}, status=404)
+            return
+
+        ext = file_path.suffix.lower()
+        mime_types = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".svg": "image/svg+xml"}
+        mime = mime_types.get(ext, "application/octet-stream")
+
+        data = file_path.read_bytes()
+        self.send_response(200)
+        self.send_cors_headers()
+        self.send_header("Content-Type", mime)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_POST(self):
         path = urllib.parse.urlparse(self.path).path
@@ -380,78 +391,3 @@ def run_server(host="127.0.0.1", port=8000):
 
 if __name__ == "__main__":
     run_server()
-
-while turn_number <= max_turns:
-    
-    if turn_number % 2 == 1:
-        speaker = debater_1
-        opponent = debater_2
-    else:
-        speaker = debater_2
-        opponent = debater_1
-    
-
-    text = generate_turn(speaker, opponent, topic, history)
-    
-
-    print("--- " + speaker["name"] + " ---")
-    print(text)
-    
- 
-    history.append({"speaker": speaker["name"], "text": text})
-    
-   
-    user_input = input("\n[Press Enter to continue, or type your own argument and press Enter]: ")
-    
-    if user_input.strip() != "":
-  
-        history.append({"speaker": "Audience member", "text": user_input})
-        print("--- You ---")
-        print(user_input)
-    
-    turn_number = turn_number + 1
-
-print("")
-print("")
-print("=== THE DEBATE HAS CONCLUDED ===")
-print("")
-print("Who won the debate?")
-print("1. " + debater_1["name"])
-print("2. " + debater_2["name"])
-
-verdict = input("Enter 1 or 2: ")
-
-if verdict == "1":
-    winner = debater_1
-    loser = debater_2
-else:
-    winner = debater_2
-    loser = debater_1
-
-print("")
-print("=== " + winner["name"] + " has been declared the winner! ===")
-print("")
-
-victory_messages = []
-victory_messages.append({"role": "system", "content": winner["system_prompt"]})
-victory_messages.append({"role": "user", "content": "You just won the debate against " + loser["name"] + " on the topic: " + topic + ". Give a short victory reaction in 2-3 sentences. Stay in character."})
-
-victory_response = ollama.chat(model="llama3.1:8b", messages=victory_messages, options={"temperature": 0.8})
-victory_text = victory_response["message"]["content"]
-
-print("--- " + winner["name"] + " (Winner) ---")
-print(victory_text)
-print("")
-
-
-loser_messages = []
-loser_messages.append({"role": "system", "content": loser["system_prompt"]})
-loser_messages.append({"role": "user", "content": "You just lost the debate against " + winner["name"] + " on the topic: " + topic + ". Give a short reaction in 2-3 sentences. You can concede or insist you were right. Stay in character."})
-
-loser_response = ollama.chat(model="llama3.1:8b", messages=loser_messages, options = {"temperature": 0.8})
-loser_text = loser_response["message"]["content"]
-
-print("--- " + loser["name"] + " (Loser) ---")
-print(loser_text)
-print("")
-print("=== End of debate ===")
