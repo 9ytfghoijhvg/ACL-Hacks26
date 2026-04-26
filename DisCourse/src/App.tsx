@@ -120,6 +120,8 @@ export default function App() {
   const [thinking, setThinking] = useState(false);
   const [userPrompt, setUserPrompt] = useState('');
   const [error, setError] = useState('');
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const voiceEnabledRef = useRef(true);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // Load debater options from backend
@@ -136,6 +138,34 @@ export default function App() {
 
   const speakerObj = debaters.find(d => d.name === speaker) ?? null;
   const opponentObj = debaters.find(d => d.name === opponent) ?? null;
+
+  const voiceProfiles: Record<string, { rate: number; pitch: number }> = {
+    'Frederick Douglass': { rate: 0.82, pitch: 0.6 },
+    'George Washington':  { rate: 0.75, pitch: 0.55 },
+    'Abraham Lincoln':    { rate: 0.78, pitch: 0.5 },
+    'IShowSpeed':         { rate: 1.5,  pitch: 0.9 },
+    'LeBron James':       { rate: 1.0,  pitch: 0.7 },
+    'Elon Musk':          { rate: 1.1,  pitch: 0.8 },
+    'Donald Trump':       { rate: 0.88, pitch: 0.75 },
+    'Joe Biden':          { rate: 0.82, pitch: 0.65 },
+    'Socrates':           { rate: 0.72, pitch: 0.6 },
+  };
+
+  const playAudio = (text?: string, speakerName?: string) => {
+    if (!voiceEnabledRef.current || !text) return;
+    if (!('speechSynthesis' in window)) return;
+    window.speechSynthesis.cancel();
+    const utt = new SpeechSynthesisUtterance(text);
+    const profile = speakerName ? (voiceProfiles[speakerName] ?? { rate: 0.95, pitch: 0.7 }) : { rate: 0.95, pitch: 0.7 };
+    utt.rate = profile.rate;
+    utt.pitch = profile.pitch;
+    // pick a deep male english voice
+    const voices = window.speechSynthesis.getVoices();
+    const male = voices.find(v => v.lang.startsWith('en') && /daniel|alex|fred|bruce|ralph|junior|albert|aaron|arthur|thomas|oliver/i.test(v.name))
+      ?? voices.find(v => v.lang.startsWith('en'));
+    if (male) utt.voice = male;
+    window.speechSynthesis.speak(utt);
+  };
 
   const startDebate = async () => {
     if (!topicInput.trim() || !speaker || !opponent) return;
@@ -158,6 +188,7 @@ export default function App() {
       const msg = data.message;
       const newEntry: HistoryEntry = { speaker: msg.speaker, text: msg.content };
       setHistory([newEntry]);
+      playAudio(msg.content, msg.speaker);
       setMessages([{ id: Date.now().toString(), speaker: msg.speaker, content: msg.content, time: new Date(msg.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), animate: true }]);
     } catch {
       setError('Failed to reach backend.');
@@ -184,6 +215,7 @@ export default function App() {
       const msg = data.message;
       const newEntry: HistoryEntry = { speaker: msg.speaker, text: msg.content };
       setHistory(prev => [...prev, newEntry]);
+      playAudio(msg.content, msg.speaker);
       setMessages(prev => [...prev, { id: Date.now().toString(), speaker: msg.speaker, content: msg.content, time: new Date(msg.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }), animate: true }]);
     } catch {
       setError('Failed to reach backend.');
@@ -200,6 +232,10 @@ export default function App() {
     setUserPrompt('');
   };
 
+  const [winner, setWinner] = useState<string | null>(null);
+  const debateTurns = messages.filter(m => !m.isAudience).length;
+  const debateOver = debateTurns >= 6;
+
   const goHome = () => {
     setView('home');
     setMessages([]);
@@ -209,6 +245,7 @@ export default function App() {
     setUserPrompt('');
     setThinking(false);
     setError('');
+    setWinner(null);
   };
 
   // ─── HOME ───
@@ -222,7 +259,7 @@ export default function App() {
               <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
                 <Scale className="w-4 h-4 text-[#09090b]" />
               </div>
-              <span className="text-sm font-bold tracking-tight">DisCourse</span>
+              <span className="text-sm font-bold tracking-tight">DissCourse</span>
               <span className="text-[10px] font-semibold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded">AI</span>
             </div>
             <div className="flex items-center gap-1.5 text-xs text-slate-500">
@@ -233,25 +270,22 @@ export default function App() {
         </nav>
 
         <main className="flex-1 flex flex-col items-center justify-center px-6 relative">
-          <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/[0.04] via-transparent to-transparent pointer-events-none" />
           <div className="relative text-center max-w-2xl mx-auto w-full">
             <div className="flex items-center justify-center gap-2 mb-8">
-              <div className="h-px w-6 bg-indigo-500/50" />
-              <span className="text-[11px] font-semibold text-indigo-400 uppercase tracking-[0.2em]">AI Debate Arena</span>
-              <div className="h-px w-6 bg-indigo-500/50" />
+              <div className="h-px w-6 bg-white/10" />
+              <span className="text-[13px] font-bold text-indigo-400 uppercase tracking-[0.2em]">🧬 Clone Debate</span>
+              <div className="h-px w-6 bg-white/10" />
             </div>
 
             <h1 className="text-5xl md:text-7xl font-black tracking-tight leading-[1.08] mb-6">
-              Two minds.
-              <br />
-              One topic.
-              <br />
-              <span className="bg-gradient-to-r from-indigo-400 to-indigo-600 text-transparent bg-clip-text">You steer.</span>
+              We cloned them.<br />
+              You pick the topic.<br />
+              <span className="text-indigo-400">They make the case.</span>
             </h1>
 
             <div className="flex justify-center mb-10">
-              <p className="text-sm md:text-base text-slate-400 leading-relaxed max-w-md text-center">
-                Dead presidents, internet legends, ancient philosophers — throw them in a room and make them argue.
+              <p className="text-sm md:text-base text-slate-400 leading-relaxed max-w-md text-center w-full">
+                AI clones of presidents, internet legends, and ancient philosophers — pick two and watch them debate with real facts.
               </p>
             </div>
 
@@ -290,10 +324,10 @@ export default function App() {
 
         <footer className="shrink-0 border-t border-white/[0.04]">
           <div className="max-w-6xl mx-auto px-6 py-6 flex flex-wrap items-center justify-center gap-x-8 gap-y-3 text-[11px] text-slate-600 font-medium">
-            <div className="flex items-center gap-1.5"><Users className="w-3.5 h-3.5 text-indigo-500/60" /><span><strong className="text-slate-400">{debaters.length}</strong> Debaters</span></div>
-            <div className="flex items-center gap-1.5"><TrendingUp className="w-3.5 h-3.5 text-emerald-500/60" /><span><strong className="text-slate-400">∞</strong> Topics</span></div>
-            <div className="flex items-center gap-1.5"><Clock className="w-3.5 h-3.5 text-amber-500/60" /><span><strong className="text-slate-400">Real-time</strong> Responses</span></div>
-            <div className="flex items-center gap-1.5"><Sparkles className="w-3.5 h-3.5 text-rose-500/60" /><span><strong className="text-slate-400">Live</strong> AI</span></div>
+            <div className="flex items-center gap-1.5"><span>🧬</span><span><strong className="text-slate-400">{debaters.length}</strong> Clones Available</span></div>
+            <div className="flex items-center gap-1.5"><span>🗣️</span><span><strong className="text-slate-400">Voice</strong> Cloned</span></div>
+            <div className="flex items-center gap-1.5"><span>🧠</span><span><strong className="text-slate-400">Personality</strong> Cloned</span></div>
+            <div className="flex items-center gap-1.5"><span>⚡</span><span><strong className="text-slate-400">Real-time</strong> Debate</span></div>
           </div>
         </footer>
       </div>
@@ -323,16 +357,20 @@ export default function App() {
             <Avatar debater={opponentObj} size="sm" />
           </div>
           <button
-            onClick={() => nextTurn()}
-            disabled={thinking}
-            className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            onClick={() => { const next = !voiceEnabledRef.current; voiceEnabledRef.current = next; setVoiceEnabled(next); if (!next) window.speechSynthesis?.cancel(); }}
+            className={cn('text-xs font-bold px-3 py-2 rounded-lg transition-colors border', voiceEnabled ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-white/[0.04] border-white/[0.08] text-slate-500')}
           >
-            {thinking ? (
-              <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Thinking</>
-            ) : (
-              <><Zap className="w-3 h-3" />Next Turn</>
-            )}
+            {voiceEnabled ? '🔊' : '🔇'}
           </button>
+          {!debateOver && (
+            <button
+              onClick={() => nextTurn()}
+              disabled={thinking}
+              className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {thinking ? <><div className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />Thinking</> : <><Zap className="w-3 h-3" />Next Turn</>}
+            </button>
+          )}
         </div>
       </header>
 
@@ -391,29 +429,54 @@ export default function App() {
         </div>
       </div>
 
-      {/* Audience input */}
-      <div className="border-t border-white/[0.04] bg-[#09090b]/90 backdrop-blur-xl">
-        <div className="max-w-2xl mx-auto px-4 py-3 flex gap-2">
-          <input
-            type="text"
-            value={userPrompt}
-            onChange={e => setUserPrompt(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && injectPrompt()}
-            placeholder="Shout something from the audience..."
-            className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-white/[0.12] transition-colors"
-          />
-          <button
-            onClick={injectPrompt}
-            disabled={!userPrompt.trim() || thinking}
-            className="bg-white/[0.06] hover:bg-white/[0.1] disabled:opacity-30 disabled:cursor-not-allowed text-white px-3.5 rounded-xl transition-colors shrink-0"
-          >
-            <Send className="w-4 h-4" />
+      {/* Winner screen or audience input */}
+      {winner ? (
+        <div className="border-t border-white/[0.04] bg-[#09090b] flex flex-col items-center justify-center py-12 px-6 text-center gap-6">
+          <div className="text-6xl">🏆</div>
+          <div>
+            <p className="text-2xl font-black text-white mb-1">{winner === 'Tie' ? "It's a tie!" : `${winner} wins!`}</p>
+            <p className="text-slate-500 text-sm">The debate has concluded</p>
+          </div>
+          <button onClick={goHome} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-8 py-3 rounded-2xl transition-colors">
+            Start a new debate
           </button>
         </div>
-        <p className="text-center text-[10px] text-slate-600 pb-2">
-          Press Enter to shout from the audience • Click "Next Turn" to continue
-        </p>
-      </div>
+      ) : debateOver ? (
+        <div className="border-t border-white/[0.04] bg-[#09090b] flex flex-col items-center justify-center py-10 px-6 text-center gap-5">
+          <p className="text-white font-bold text-lg">Who made the better argument?</p>
+          <p className="text-slate-500 text-sm max-w-sm">Both sides have had their say. You decide who won.</p>
+          <div className="flex gap-3 flex-wrap justify-center">
+            <button onClick={() => setWinner(speaker)} className="bg-indigo-600 hover:bg-indigo-500 text-white font-bold px-6 py-3 rounded-2xl transition-colors">
+              {speaker}
+            </button>
+            <button onClick={() => setWinner(opponent)} className="bg-rose-600 hover:bg-rose-500 text-white font-bold px-6 py-3 rounded-2xl transition-colors">
+              {opponent}
+            </button>
+            <button onClick={() => setWinner('Tie')} className="bg-white/[0.08] hover:bg-white/[0.12] text-slate-300 font-bold px-6 py-3 rounded-2xl transition-colors">
+              Tie
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="border-t border-white/[0.04] bg-[#09090b]/90 backdrop-blur-xl">
+          <div className="max-w-2xl mx-auto px-4 py-3 flex gap-2">
+            <input
+              type="text"
+              value={userPrompt}
+              onChange={e => setUserPrompt(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && injectPrompt()}
+              placeholder="Ask a question or challenge their argument..."
+              className="flex-1 bg-white/[0.03] border border-white/[0.06] rounded-xl px-4 py-2.5 text-sm text-white placeholder-slate-600 focus:outline-none focus:border-white/[0.12] transition-colors"
+            />
+            <button onClick={injectPrompt} disabled={!userPrompt.trim() || thinking} className="bg-white/[0.06] hover:bg-white/[0.1] disabled:opacity-30 disabled:cursor-not-allowed text-white px-3.5 rounded-xl transition-colors shrink-0">
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
+          <p className="text-center text-[10px] text-slate-600 pb-2">
+            Press Enter to ask a question • Click "Next Turn" to continue the debate
+          </p>
+        </div>
+      )}
     </div>
   );
 }

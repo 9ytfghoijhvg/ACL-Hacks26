@@ -1,15 +1,29 @@
 import json
+import os
+import base64
 import urllib.parse
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from socketserver import ThreadingMixIn
 
+from dotenv import load_dotenv
+
+
+load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+
 import ollama
+from elevenlabs import ElevenLabs
+
+ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY", "")
+el_client = ElevenLabs(api_key=ELEVENLABS_API_KEY) if ELEVENLABS_API_KEY else None
+
+# ElevenLabs voice IDs picked to match each character's vibe
 # The character descriptions were also partially generated with AI, as our original prompts had a couple of bugs that would cause personality issues
 debaters = [
     {
         "name": "Frederick Douglass",
+        "voice_id": "D38z5RcWu1voky8WS1ja",  # Fin – deep, powerful, commanding
         "system_prompt": (
             "You are Frederick Douglass, abolitionist, orator, and former slave. "
             "You speak with moral force and biblical cadence. "
@@ -30,6 +44,7 @@ debaters = [
     },
     {
         "name": "George Washington",
+        "voice_id": "onwK4e9ZLuTAKqWW03F9",  # Daniel – formal, dignified, older
         "system_prompt": (
             "You are George Washington, first President of the United States, "
             "commander of the Continental Army, and Virginia planter. "
@@ -49,6 +64,7 @@ debaters = [
     },
     {
         "name": "Abraham Lincoln",
+        "voice_id": "N2lVS1w4EtoT3dr4eOWO",  # Callum – slow, grave, measured
         "system_prompt": (
             "You are Abraham Lincoln, 16th President of the United States. "
             "YOUR CORE BELIEFS: The Union must be preserved at any cost. Slavery is "
@@ -67,6 +83,7 @@ debaters = [
     },
     {
         "name": "IShowSpeed",
+        "voice_id": "TX3LPaxmHKxFdv7VOQHJ",  # Liam – young, fast, high energy
         "system_prompt": (
             "You are IShowSpeed, a young American YouTuber and streamer known for "
             "loud reactions and chaotic energy. "
@@ -87,6 +104,7 @@ debaters = [
     },
     {
         "name": "LeBron James",
+        "voice_id": "cgSgspJ2msm6clMCkdW9",  # Jesse – confident, smooth, deep
         "system_prompt": (
             "You are LeBron James, NBA superstar and four-time champion. "
             "YOUR CORE BELIEFS: Basketball is the greatest sport in the world. "
@@ -106,6 +124,7 @@ debaters = [
     },
     {
         "name": "Elon Musk",
+        "voice_id": "IKne3meq5aSn9XLyUdCD",  # Charlie – casual, slightly awkward
         "system_prompt": (
             "You are Elon Musk, CEO of Tesla and SpaceX, owner of X. "
             "YOUR CORE BELIEFS: Humanity must become a multi-planet species and "
@@ -126,6 +145,7 @@ debaters = [
     },
     {
         "name": "Donald Trump",
+        "voice_id": "AZnzlk1XvdvUeBnXmlld",  # Domi – punchy, loud
         "system_prompt": (
             "You are Donald Trump, 45th and 47th President of the United States. "
             "YOUR CORE BELIEFS: America First. Your administration was the best in "
@@ -145,6 +165,7 @@ debaters = [
     },
     {
         "name": "Joe Biden",
+        "voice_id": "ErXwobaYiN019PkySvjV",  # Antoni – warm, folksy
         "system_prompt": (
             "You are Joe Biden, 46th President of the United States. "
             "YOUR CORE BELIEFS: The middle class is the backbone of America. Unions "
@@ -165,6 +186,7 @@ debaters = [
     },
     {
         "name": "Socrates",
+        "voice_id": "VR6AewLTigWG4xSOukaG",  # Arnold – wise, deliberate
         "system_prompt": (
             "You are Socrates, ancient Greek philosopher of Athens. "
             "YOUR CORE BELIEFS: The unexamined life is not worth living. True wisdom "
@@ -197,16 +219,71 @@ def generate_turn(speaker, opponent, topic, history):
         if turn["speaker"] == speaker["name"]:
             messages.append({"role": "assistant", "content": turn["text"]})
         elif turn["speaker"] == "Audience member":
-            audience_text = "IMPORTANT: An audience member just spoke up and said: '" + turn["text"] + "'. You must directly acknowledge what they said in your next response before continuing your debate with " + opponent["name"] + ". Do not ignore the audience member."
+            audience_text = "An audience member said: '" + turn["text"] + "'. Briefly acknowledge them, then continue your argument."
             messages.append({"role": "user", "content": audience_text})
         else:
-            messages.append({"role": "user", "content": opponent["name"] + " says: " + turn["text"]})
+            messages.append({"role": "user", "content": opponent["name"] + ": " + turn["text"]})
     
     if len(history) == 0:
-        messages.append({"role": "user", "content": "Open the debate with your position on the topic: \"" + topic + "\". Make your opening argument directly about this topic."})
+        messages.append({"role": "user", "content": "Begin the debate. State your opening position on: \"" + topic + "\". Start your response directly — do not use ellipses or trailing punctuation at the start."})
+    else:
+        messages.append({"role": "user", "content": "Now give your response. Start with a complete sentence — do not begin with '...' or any continuation marker."})
     
-    response = ollama.chat(model="llama3.2:3b", messages=messages, options={"temperature": 0.8, "num_predict": 120})
-    return response["message"]["content"]
+    response = ollama.chat(model="llama3.2:3b", messages=messages, options={"temperature": 0.8, "num_predict": 800})
+    content = response["message"]["content"].lstrip(". \n")
+    return content
+
+
+def generate_audio(text, voice_id):
+    """Generate TTS audio and return as base64 string. Returns None if unavailable."""
+    if not el_client or not voice_id:
+        return None
+    try:
+        audio = el_client.text_to_speech.convert(
+            voice_id=voice_id,
+            text=text,
+            model_id="eleven_turbo_v2_5",
+            output_format="mp3_44100_64",
+        )
+        audio_bytes = b"".join(audio)
+        return base64.b64encode(audio_bytes).decode("utf-8")
+    except Exception as e:
+        print(f"TTS error: {e}")
+        return None
+
+
+def generate_closing(speaker, opponent, topic, won):
+    """Generate a short in-character closing statement after the debate result."""
+    result = "won" if won else "lost"
+    prompt = (
+        speaker["system_prompt"] +
+        f" The debate on \"{topic}\" against {opponent['name']} has ended and you have {result}. "
+        "Give a 1-2 sentence in-character closing statement reacting to this result. "
+        "Stay completely in character. Do not begin with '...' or any continuation marker. "
+        "Output only spoken words."
+    )
+    messages = [
+        {"role": "system", "content": prompt},
+        {"role": "user", "content": "Give your closing statement now."}
+    ]
+    response = ollama.chat(model="llama3.2:3b", messages=messages, options={"temperature": 0.8, "num_predict": 100})
+    return response["message"]["content"].lstrip(". \n")
+    """Generate TTS audio and return as base64 string. Returns None if unavailable."""
+    if not el_client or not voice_id:
+        return None
+    try:
+        audio = el_client.text_to_speech.convert(
+            voice_id=voice_id,
+            text=text,
+            model_id="eleven_turbo_v2_5",
+            output_format="mp3_44100_64",
+        )
+        audio_bytes = b"".join(audio)
+        return base64.b64encode(audio_bytes).decode("utf-8")
+    except Exception as e:
+        print(f"TTS error: {e}")
+        return None
+
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -234,10 +311,11 @@ def find_debater(name):
 
 def build_system_prompt(speaker, opponent, topic):
     prompt = speaker["system_prompt"]
-    prompt = prompt + " You are debating " + opponent["name"] + "."
-    prompt = prompt + " DEBATE TOPIC (stay on this the entire time): \"" + topic + "\". Every single response MUST directly address this topic. Do not go off on tangents unrelated to it."
-    prompt = prompt + " Audience members may shout comments — acknowledge them briefly, then bring it back to the topic."
-    prompt = prompt + " Respond to your opponent's last point. Do not give in. Stay in character."
+    prompt += " You are debating " + opponent["name"] + " on the topic: \"" + topic + "\"."
+    prompt += " You MUST respond in a way that is authentic to who you are — draw on your real beliefs, experiences, and worldview. If your character would genuinely agree with a point, you may agree, but only if it truly fits your character. Otherwise, find the genuine tension between your perspective and theirs and argue it."
+    prompt += " Every response MUST directly address the topic with facts or reasoning from your character's perspective. No personal attacks — critique the argument, not the person."
+    prompt += " Do NOT begin your response with '...' or any continuation marker. Start with a complete, confident sentence."
+    prompt += " Keep your response to 2-3 sentences maximum."
     return prompt
 
 
@@ -303,13 +381,15 @@ class DebateAPIHandler(BaseHTTPRequestHandler):
             self.handle_start()
         elif path == "/debate/next":
             self.handle_next()
+        elif path == "/debate/result":
+            self.handle_result()
         else:
             self.send_json({"error": "Not found"}, status=404)
 
     def handle_options(self):
         choices = [
-            {"name": debater["name"], "image": image_for_debater(debater["name"]) }
-            for debater in debaters
+            {"name": d["name"], "image": image_for_debater(d["name"]), "bio": d.get("bio",""), "stat": d.get("stat","")}
+            for d in debaters
         ]
         self.send_json({"debaters": choices})
 
@@ -343,7 +423,8 @@ class DebateAPIHandler(BaseHTTPRequestHandler):
 
         try:
             content = generate_turn(speaker, opponent, topic, [])
-            self.send_json({"message": {"speaker": speaker_name, "content": content, "time": datetime.utcnow().isoformat() + "Z"}})
+            audio = generate_audio(content, speaker.get("voice_id"))
+            self.send_json({"message": {"speaker": speaker_name, "content": content, "audio": audio, "time": datetime.utcnow().isoformat() + "Z"}})
         except Exception as exc:
             self.send_json({"error": str(exc)}, status=500)
 
@@ -355,27 +436,40 @@ class DebateAPIHandler(BaseHTTPRequestHandler):
         history = payload.get("history") or []
         audience = (payload.get("audience") or "").strip()
 
-        if not topic or not speaker_name or not opponent_name:
-            self.send_json({"error": "Topic, speaker, and opponent are required."}, status=400)
-            return
-
-        if speaker_name == opponent_name:
-            self.send_json({"error": "Speaker and opponent must be different."}, status=400)
-            return
 
         speaker = find_debater(speaker_name)
         opponent = find_debater(opponent_name)
 
-        if not speaker or not opponent:
-            self.send_json({"error": "Invalid debater selection."}, status=400)
-            return
+
 
         if audience:
             history = history + [{"speaker": "Audience member", "text": audience}]
 
         try:
             content = generate_turn(speaker, opponent, topic, history)
-            self.send_json({"message": {"speaker": speaker_name, "content": content, "time": datetime.utcnow().isoformat() + "Z"}})
+            audio = generate_audio(content, speaker.get("voice_id"))
+            self.send_json({"message": {"speaker": speaker_name, "content": content, "audio": audio, "time": datetime.utcnow().isoformat() + "Z"}})
+        except Exception as exc:
+            self.send_json({"error": str(exc)}, status=500)
+
+    def handle_result(self):
+        payload = self.read_json()
+        winner_name = (payload.get("winner") or "").strip()
+        loser_name = (payload.get("loser") or "").strip()
+        topic = (payload.get("topic") or "").strip()
+
+        winner = find_debater(winner_name)
+        loser = find_debater(loser_name)
+
+        try:
+            winner_text = generate_closing(winner, loser, topic, won=True)
+            loser_text = generate_closing(loser, winner, topic, won=False)
+            winner_audio = generate_audio(winner_text, winner.get("voice_id"))
+            loser_audio = generate_audio(loser_text, loser.get("voice_id"))
+            self.send_json({
+                "winner": {"name": winner_name, "text": winner_text, "audio": winner_audio},
+                "loser":  {"name": loser_name,  "text": loser_text,  "audio": loser_audio},
+            })
         except Exception as exc:
             self.send_json({"error": str(exc)}, status=500)
 
