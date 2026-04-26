@@ -3,15 +3,17 @@ import './App.css';
 import { Scale, Play, Send, RotateCcw, Zap, Users, TrendingUp, Clock, Sparkles, User } from 'lucide-react';
 import { cn } from './utils/cn';
 
+// uses api for backend and frontend communication
 const API = 'http://127.0.0.1:8000';
 
 type View = 'home' | 'arena';
 
 interface Message {
-  id: string;
+   id: string;
   speaker: string;
-  content: string;
+ content: string;
   time: string;
+
   isAudience?: boolean;
   animate?: boolean;
 }
@@ -26,7 +28,7 @@ interface HistoryEntry {
   text: string;
 }
 
-// Debater avatar component
+
 function Avatar({ debater, size = 'md' }: { debater: Debater | null; size?: 'sm' | 'md' | 'lg' }) {
   const sizeClass = size === 'lg' ? 'w-16 h-16 text-2xl' : size === 'md' ? 'w-10 h-10 text-base' : 'w-8 h-8 text-xs';
   if (!debater) {
@@ -46,19 +48,22 @@ function Avatar({ debater, size = 'md' }: { debater: Debater | null; size?: 'sm'
   );
 }
 
-// Dropdown for picking a debater
+
+//selection for debaters
 function DebaterPicker({ label, debaters, value, onChange, exclude }: {
+
   label: string;
+
   debaters: Debater[];
   value: string;
   onChange: (name: string) => void;
   exclude: string;
 }) {
   const [open, setOpen] = useState(false);
-  const selected = debaters.find(d => d.name === value) ?? null;
+   const selected = debaters.find(d => d.name === value) ?? null;
 
   return (
-    <div className="relative w-full">
+       <div className="relative w-full" >
       <p className="text-[11px] font-semibold text-slate-500 uppercase tracking-widest mb-2">{label}</p>
       <button
         onClick={() => setOpen(o => !o)}
@@ -89,18 +94,24 @@ function DebaterPicker({ label, debaters, value, onChange, exclude }: {
   );
 }
 
-// Typewriter effect component
 function TypewriterText({ text, animate }: { text: string; animate: boolean }) {
   const [displayed, setDisplayed] = useState(animate ? '' : text);
 
   useEffect(() => {
-    if (!animate) { setDisplayed(text); return; }
+    if (!animate) { 
+      setDisplayed(text);
+       return; 
+      }
     setDisplayed('');
     let i = 0;
-    const interval = setInterval(() => {
+    const interval = setInterval(
+      () => {
       i++;
       setDisplayed(text.slice(0, i));
-      if (i >= text.length) clearInterval(interval);
+      if (i >= text.length){
+
+         clearInterval(interval);
+      }
     }, 18);
     return () => clearInterval(interval);
   }, [text, animate]);
@@ -108,10 +119,13 @@ function TypewriterText({ text, animate }: { text: string; animate: boolean }) {
   return <span>{displayed}{animate && displayed.length < text.length && <span className="inline-block w-0.5 h-3.5 bg-current ml-0.5 animate-pulse" />}</span>;
 }
 
-export default function App() {
+// the whole app function that does the frontend logic
+ export default function App() {
+
   const [view, setView] = useState<View>('home');
   const [debaters, setDebaters] = useState<Debater[]>([]);
   const [speaker, setSpeaker] = useState('');
+
   const [opponent, setOpponent] = useState('');
   const [topicInput, setTopicInput] = useState('');
   const [activeTopic, setActiveTopic] = useState('');
@@ -122,19 +136,23 @@ export default function App() {
   const [error, setError] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Load debater options from backend
-  useEffect(() => {
+
+   
+     useEffect(() => {
     fetch(`${API}/debate/options`)
       .then(r => r.json())
       .then(data => setDebaters(data.debaters ?? []))
-      .catch(() => setError('Could not connect to backend. Make sure debate.py is running.'));
+      .catch(() => setError('Cannot communicate with backend'));
   }, []);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+   
   }, [messages]);
 
-  const speakerObj = debaters.find(d => d.name === speaker) ?? null;
+   
+   const speakerObj = debaters.find(d => d.name === speaker) ?? null;
+
   const opponentObj = debaters.find(d => d.name === opponent) ?? null;
 
   const startDebate = async () => {
@@ -201,35 +219,36 @@ export default function App() {
   };
 
   const goHome = () => {
-    setView('home');
+     setView('home');
     setMessages([]);
     setHistory([]);
     setActiveTopic('');
     setTopicInput('');
     setUserPrompt('');
+
     setThinking(false);
     setError('');
   };
 
-  // ─── HOME ───
+  // home page, AI was used to improve the HTML tags and CSS to make it look flawless for the arena too
   if (view === 'home') {
     const canStart = topicInput.trim() && speaker && opponent && speaker !== opponent;
-    return (
+     return (
       <div className="min-h-screen bg-[#09090b] text-white font-sans selection:bg-indigo-500/30 antialiased flex flex-col">
-        <nav className="shrink-0 border-b border-white/[0.04]">
+         <nav className="shrink-0 border-b border-white/[0.04]">
           <div className="max-w-6xl mx-auto h-14 flex items-center justify-between px-6">
             <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
+                 <div className="w-8 h-8 bg-white rounded-lg flex items-center justify-center">
                 <Scale className="w-4 h-4 text-[#09090b]" />
               </div>
               <span className="text-sm font-bold tracking-tight">DisCourse</span>
               <span className="text-[10px] font-semibold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 px-1.5 py-0.5 rounded">AI</span>
-            </div>
+        </div>
             <div className="flex items-center gap-1.5 text-xs text-slate-500">
               <div className={cn('w-1.5 h-1.5 rounded-full', debaters.length > 0 ? 'bg-emerald-400 animate-pulse' : 'bg-red-400')} />
-              <span className="font-medium">{debaters.length > 0 ? `${debaters.length} debaters loaded` : 'Backend offline'}</span>
+            <span className="font-medium">{debaters.length > 0 ? `${debaters.length} debaters loaded` : 'Backend offline'}</span>
             </div>
-          </div>
+              </div>
         </nav>
 
         <main className="flex-1 flex flex-col items-center justify-center px-6 relative">
@@ -258,13 +277,13 @@ export default function App() {
             {error && <p className="text-red-400 text-xs mb-4 bg-red-500/10 border border-red-500/20 rounded-lg px-4 py-2">{error}</p>}
 
             <div className="max-w-lg mx-auto space-y-4 text-left">
-              {/* Debater pickers side by side */}
+              {}
               <div className="grid grid-cols-2 gap-3">
                 <DebaterPicker label="Debater 1" debaters={debaters} value={speaker} onChange={setSpeaker} exclude={opponent} />
                 <DebaterPicker label="Debater 2" debaters={debaters} value={opponent} onChange={setOpponent} exclude={speaker} />
               </div>
 
-              {/* Topic input */}
+              {}
               <div className="bg-white/[0.04] border border-white/[0.08] rounded-2xl p-1.5 focus-within:border-indigo-500/30 transition-colors">
                 <input
                   type="text"
@@ -300,31 +319,40 @@ export default function App() {
     );
   }
 
-  // ─── ARENA ───
   return (
+
     <div className="h-screen bg-[#09090b] text-white font-sans flex flex-col selection:bg-indigo-500/30 antialiased">
-      <header className="h-13 bg-[#09090b]/90 backdrop-blur-xl border-b border-white/[0.04] flex items-center justify-between px-4 shrink-0">
+      
+          <header className="h-13 bg-[#09090b]/90 backdrop-blur-xl border-b border-white/[0.04] flex items-center justify-between px-4 shrink-0">
         <div className="flex items-center gap-3">
-          <button onClick={goHome} className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-white transition-colors">
+      
+      <button onClick={goHome} className="flex items-center gap-1.5 text-xs font-semibold text-slate-500 hover:text-white transition-colors">
             <RotateCcw className="w-3.5 h-3.5" />
+
             <span className="hidden sm:inline">New Debate</span>
           </button>
           <div className="h-4 w-px bg-white/[0.06]" />
+
           <p className="text-xs text-slate-400 truncate max-w-[180px] md:max-w-md font-medium">{activeTopic}</p>
         </div>
 
-        {/* Show both debaters in header */}
+        {}
         <div className="flex items-center gap-3">
           <div className="hidden sm:flex items-center gap-2">
             <Avatar debater={speakerObj} size="sm" />
-            <span className="text-xs text-slate-400 font-medium">{speaker}</span>
-            <span className="text-slate-600 text-xs">vs</span>
+        
+        <span className="text-xs text-slate-400 font-medium">{speaker}</span>
+           
+           <span className="text-slate-600 text-xs">vs</span>
             <span className="text-xs text-slate-400 font-medium">{opponent}</span>
             <Avatar debater={opponentObj} size="sm" />
           </div>
           <button
             onClick={() => nextTurn()}
+            
+            
             disabled={thinking}
+          
             className="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold px-4 py-2 rounded-lg flex items-center gap-1.5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             {thinking ? (
@@ -334,21 +362,24 @@ export default function App() {
             )}
           </button>
         </div>
+
       </header>
 
-      {/* Messages feed */}
+      {}
       <div className="flex-1 overflow-y-auto">
         <div className="max-w-2xl mx-auto px-4 py-6 space-y-1">
           {messages.map(msg => {
-            // Audience message — centered pill
+    
+
             if (msg.isAudience) {
               return (
                 <div key={msg.id} className="flex justify-center py-2">
                   <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/20 rounded-full px-4 py-1.5 max-w-[80%]">
                     <span className="text-amber-400 text-[10px] font-bold uppercase tracking-wider shrink-0">Audience</span>
-                    <span className="text-amber-200 text-xs">{msg.content}</span>
+                        <span className="text-amber-200 text-xs">{msg.content}</span>
                   </div>
                 </div>
+
               );
             }
 
@@ -381,7 +412,7 @@ export default function App() {
                   <span className="w-1 h-1 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '120ms' }} />
                   <span className="w-1 h-1 bg-indigo-400 rounded-full animate-bounce" style={{ animationDelay: '240ms' }} />
                 </div>
-                <span className="font-medium">Formulating response...</span>
+                <span className="font-medium">Creating a response...</span>
               </div>
             </div>
           )}
@@ -411,7 +442,7 @@ export default function App() {
           </button>
         </div>
         <p className="text-center text-[10px] text-slate-600 pb-2">
-          Press Enter to shout from the audience • Click "Next Turn" to continue
+          Press Enter to shout from the audience, or Click "Next Turn" to continue
         </p>
       </div>
     </div>

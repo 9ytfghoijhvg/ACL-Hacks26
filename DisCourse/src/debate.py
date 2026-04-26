@@ -214,13 +214,14 @@ DEBATER_IMAGE_DIR = ROOT_DIR / "public" / "debaters"
 
 
 def image_for_debater(name):
+    
     if not DEBATER_IMAGE_DIR.exists():
         return None
 
-    for ext in [".png", ".jpg", ".jpeg", ".webp", ".svg"]:
-        candidate = DEBATER_IMAGE_DIR / f"{name}{ext}"
-        if candidate.exists():
-            return "/debaters/" + urllib.parse.quote(f"{name}{ext}")
+    for filenames in [".png", ".jpg", ".jpeg", ".webp", ".svg"]:
+        image = DEBATER_IMAGE_DIR / f"{name}{filenames}"
+        if image.exists():
+            return "/debaters/" + urllib.parse.quote(f"{name}{filenames}")
 
     return None
 
@@ -234,10 +235,8 @@ def find_debater(name):
 
 def build_system_prompt(speaker, opponent, topic):
     prompt = speaker["system_prompt"]
-    prompt = prompt + " You are debating " + opponent["name"] + "."
-    prompt = prompt + " DEBATE TOPIC (stay on this the entire time): \"" + topic + "\". Every single response MUST directly address this topic. Do not go off on tangents unrelated to it."
-    prompt = prompt + " Audience members may shout comments — acknowledge them briefly, then bring it back to the topic."
-    prompt = prompt + " Respond to your opponent's last point. Do not give in. Stay in character."
+
+    prompt = prompt + " You are debating " + opponent["name"] + "." + " DEBATE TOPIC (stay on this the entire time): \"" + topic + "\". Every single response MUST directly address this topic. Do not go off on tangents unrelated to it." + " Audience members may shout comments — acknowledge them briefly, then bring it back to the topic." + " Respond to your opponent's last point. Do not give in. Stay in character."
     return prompt
 
 
@@ -245,18 +244,23 @@ class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
     daemon_threads = True
 
 
+# a little bit of AI used to figure out how to send data as a json
 class DebateAPIHandler(BaseHTTPRequestHandler):
     def send_cors_headers(self):
+
         self.send_header("Access-Control-Allow-Origin", "*")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type")
 
     def send_json(self, payload, status=200):
+
         body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
         self.send_response(status)
         self.send_cors_headers()
+
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+
         self.end_headers()
         self.wfile.write(body)
 
@@ -270,8 +274,6 @@ class DebateAPIHandler(BaseHTTPRequestHandler):
         if path == "/debate/options":
             self.handle_options()
             return
-
-        # Serve debater images from public/debaters/
         if path.startswith("/debaters/"):
             self.serve_image(path)
             return
